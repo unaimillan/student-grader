@@ -4,6 +4,10 @@ import { HomePage } from './pages/Home.page';
 const router = createBrowserRouter([
   {
     path: '/',
+    action: () => ({ redirect: '/student-grader' }),
+  },
+  {
+    path: '/student-grader/',
     element: <HomePage />,
   },
 ]);
