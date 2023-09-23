@@ -1,10 +1,11 @@
-import { Title, Text, Anchor, Button, Container, Combobox, NumberInput, FocusTrap, NumberInputProps, Table, Group, Center, Modal, Space, Flex, Stack, TextInput, Alert } from '@mantine/core';
+import { Title, Text, Anchor, Button, Container, Combobox, NumberInput, FocusTrap, NumberInputProps, Table, Group, Center, Modal, Space, Flex, Stack, TextInput, Alert, keys } from '@mantine/core';
 import { getHotkeyHandler, range, useDebouncedState, useDisclosure, useFocusReturn, useListState } from '@mantine/hooks';
 import { SearchCombobox } from '../SearchCombobox/SearchCombobox';
 import { notifications } from '@mantine/notifications';
 import React, { useEffect, useRef, useState } from 'react';
 import Spreadsheet, { Matrix, RowIndicatorComponent, RowIndicatorProps } from 'react-spreadsheet';
 import { InfoCircle } from 'tabler-icons-react';
+import Fuse from 'fuse.js';
 
 
 function getFilteredOptions(data: IGradedStudent[], searchQuery: string, limit: number) {
@@ -40,7 +41,7 @@ const fromMatrix = (data: Matrix<{ value: string }>): IGradedStudent[] => {
 
 export function Grader() {
   const rawStudents: IGradedStudent[] = [
-    {name: "", surname: "", email: "", grade: 0}
+    { name: "", surname: "", email: "", grade: 0 }
   ]
 
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
@@ -49,7 +50,9 @@ export function Grader() {
   const [grade, setGrade] = useState(2);
 
   const [studentList, studentListHandler] = useListState<IGradedStudent>();
-  const filteredStudentList = searchValue ? getFilteredOptions(studentList, searchValue, 15) : studentList;
+  const fuse = new Fuse(studentList, { keys: ["name", "surname", "email"], threshold: 0.3 })
+  const filteredStudentList = searchValue ? fuse.search(searchValue, { limit: 15 }).map(v => v.item) : studentList;
+
 
   const [updatedStudents, updatedStudentsHandler] = useListState<IGradedStudent>([]);
 
@@ -83,9 +86,9 @@ export function Grader() {
     studentListHandler.setItemProp(index, "grade", grade)
 
     const backupIndex = updatedStudents.findIndex(v => v.email == student.email)
-    if(backupIndex -1){
-      updatedStudentsHandler.insert(0, {...student, grade: grade})
-    }else{
+    if (backupIndex - 1) {
+      updatedStudentsHandler.insert(0, { ...student, grade: grade })
+    } else {
       updatedStudentsHandler.setItemProp(backupIndex, "grade", grade)
     }
 
@@ -98,14 +101,14 @@ export function Grader() {
       <Modal opened={modalOpened} onClose={closeModal} title="Copy students from the spreadsheet" size="auto">
         <Container>
           <Flex direction="column" align="end" gap="md">
-          <Alert style={{alignSelf:"center"}} title="Alert" color="red" icon={<InfoCircle />}>Any changes here will override all your data!</Alert>
-          <Spreadsheet 
-            data={toReadonlyMatrix(studentList)} 
-            columnLabels={["Name", "Surname", "Email", "Grade"]} 
-            rowLabels={["1"]}
-            onChange={data => { studentListHandler.setState(fromMatrix(data)) }}
+            <Alert style={{ alignSelf: "center" }} title="Alert" color="red" icon={<InfoCircle />}>Any changes here will override all your data!</Alert>
+            <Spreadsheet
+              data={toReadonlyMatrix(studentList)}
+              columnLabels={["Name", "Surname", "Email", "Grade"]}
+              rowLabels={["1"]}
+              onChange={data => { studentListHandler.setState(fromMatrix(data)) }}
             />
-          <Button onClick={closeModal}>Close</Button>
+            <Button onClick={closeModal}>Close</Button>
           </Flex>
         </Container>
       </Modal>
@@ -127,7 +130,10 @@ export function Grader() {
               label="Start entering student name, surname, or email"
               defaultValue={searchValue}
               onChange={(event) => setSearchValue(event.currentTarget.value)}
-              onKeyDown={getHotkeyHandler([['enter', onComboboxSubmit]])}
+              onKeyDown={getHotkeyHandler([['enter', onComboboxSubmit], ['escape', () => {
+                if (textInputRef.current) { textInputRef.current.value = '' };
+                setSearchValue('');
+              }]])}
               ref={textInputRef}
             />
             <NumberInput
@@ -139,8 +145,8 @@ export function Grader() {
               step={0.25}
               onKeyDown={getHotkeyHandler([['enter', onResultSubmit]])} />
             <Flex align={"center"} justify={"space-between"}>
-            <Text>{studentList.length} students loaded, {filteredStudentList.length} displayed</Text>
-            <Button onClick={()=> navigator.clipboard.writeText(studentList.map(v => `${v.email}\t${v.grade}`).join('\n'))}>Copy to clipboard</Button>
+              <Text>{studentList.length} students loaded, {filteredStudentList.length} displayed</Text>
+              <Button onClick={() => navigator.clipboard.writeText(studentList.map(v => `${v.email}\t${v.grade}`).join('\n'))}>Copy to clipboard</Button>
             </Flex>
           </Stack>
         </Container>
