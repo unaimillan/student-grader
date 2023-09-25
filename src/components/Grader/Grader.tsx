@@ -8,8 +8,8 @@ import { InfoCircle } from 'tabler-icons-react';
 import Fuse from 'fuse.js';
 
 
-function getFilteredOptions(data: IGradedStudent[], searchQuery: string, limit: number) {
-  const result: IGradedStudent[] = [];
+function getFilteredOptions(data: IStudent[], searchQuery: string, limit: number) {
+  const result: IStudent[] = [];
   const check = (str: string) => str.toLowerCase().includes(searchQuery.trim().toLowerCase())
 
   for (let i = 0; i < data.length; i += 1) {
@@ -27,41 +27,42 @@ function getFilteredOptions(data: IGradedStudent[], searchQuery: string, limit: 
   return result;
 }
 
-const toMatrix = (students: IGradedStudent[]): Matrix<{ value: string }> => {
+const toMatrix = (students: IStudent[]): Matrix<{ value: string }> => {
   return students.map(s => [{ value: s.name }, { value: s.surname }, { value: s.email }, { value: s.grade.toString() }])
 }
 
-const toReadonlyMatrix = (students: IGradedStudent[]): Matrix<{ value: string }> => {
+const toReadonlyMatrix = (students: IStudent[]): Matrix<{ value: string }> => {
   return students.map(s => [{ value: s.name, readOnly: true }, { value: s.surname, readOnly: true }, { value: s.email, readOnly: true }, { value: s.grade.toString(), readOnly: true }])
 }
 
-const fromMatrix = (data: Matrix<{ value: string }>): IGradedStudent[] => {
-  return data.map(v => { return { name: v[0]?.value || "", surname: v[1]?.value || "", email: v[2]?.value || "", grade: parseFloat(v[3]?.value || "0") } })
+const fromMatrix = (data: Matrix<{ value: string }>): IStudent[] => {
+  return data.map(v => { return { name: v[0]?.value || "", surname: v[1]?.value || "", email: v[2]?.value || "", grade: v[3]?.value || "" } })
 }
 
 export function Grader() {
-  const rawStudents: IGradedStudent[] = [
-    { name: "", surname: "", email: "", grade: 0 }
+  const rawStudents: IStudent[] = [
+    { name: "", surname: "", email: "", grade: "" }
   ]
 
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
 
   const [searchValue, setSearchValue] = useDebouncedState('', 300);
-  const [grade, setGrade] = useState(2);
+  const [grade, setGrade] = useState<string>("2");
 
-  const [studentList, studentListHandler] = useListState<IGradedStudent>();
+  const [studentList, studentListHandler] = useListState<IStudent>();
   const fuse = new Fuse(studentList, { keys: ["name", "surname", "email"], threshold: 0.3 })
   const filteredStudentList = searchValue ? fuse.search(searchValue, { limit: 15 }).map(v => v.item) : studentList;
 
 
-  const [updatedStudents, updatedStudentsHandler] = useListState<IGradedStudent>([]);
+  const [updatedStudents, updatedStudentsHandler] = useListState<IStudent>([]);
 
   const textInputRef = useRef<HTMLInputElement>(null);
   const numberInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // textInputRef.current?.select()
-  }, [])
+    console.log(updatedStudents)
+  }, [modalOpened])
 
   const onComboboxSubmit = () => {
     if (filteredStudentList.length != 1) {
@@ -93,7 +94,7 @@ export function Grader() {
     }
 
     textInputRef.current?.select()
-    setGrade(2)
+    setGrade("2")
   }
 
   return (
@@ -139,7 +140,7 @@ export function Grader() {
             <NumberInput
               ref={numberInputRef}
               value={grade}
-              onChange={v => { setGrade(parseFloat(v.toString())) }}
+              onChange={v => { setGrade(v.toString()) }}
               min={0}
               max={2}
               step={0.25}
@@ -147,6 +148,9 @@ export function Grader() {
             <Flex align={"center"} justify={"space-between"}>
               <Text>{studentList.length} students loaded, {filteredStudentList.length} displayed</Text>
               <Button onClick={() => navigator.clipboard.writeText(studentList.map(v => `${v.email}\t${v.grade}`).join('\n'))}>Copy to clipboard</Button>
+            </Flex>
+            <Flex justify="center">
+              <Text>{studentList.filter(v => v.grade !== "").length} students graded</Text>
             </Flex>
           </Stack>
         </Container>
