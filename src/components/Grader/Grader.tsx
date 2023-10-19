@@ -1,11 +1,11 @@
-import { Title, Text, Anchor, Button, Container, Combobox, NumberInput, FocusTrap, NumberInputProps, Table, Group, Center, Modal, Space, Flex, Stack, TextInput, Alert, keys } from '@mantine/core';
-import { getHotkeyHandler, range, useDebouncedState, useDisclosure, useFocusReturn, useListState } from '@mantine/hooks';
-import { SearchCombobox } from '../SearchCombobox/SearchCombobox';
+import { Title, Text, Button, Container, NumberInput, Center, Modal, Space, Flex, Stack, TextInput, Alert } from '@mantine/core';
+import { getHotkeyHandler, useDebouncedState, useDisclosure, useListState } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import React, { useEffect, useRef, useState } from 'react';
-import Spreadsheet, { Matrix, RowIndicatorComponent, RowIndicatorProps } from 'react-spreadsheet';
+import { useRef, useState } from 'react';
+import Spreadsheet, { Matrix } from 'react-spreadsheet';
 import { InfoCircle } from 'tabler-icons-react';
 import Fuse from 'fuse.js';
+import { modals } from '@mantine/modals';
 
 
 function getFilteredOptions(data: IStudent[], searchQuery: string, limit: number) {
@@ -47,7 +47,8 @@ export function Grader() {
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
 
   const [searchValue, setSearchValue] = useDebouncedState('', 300);
-  const [grade, setGrade] = useState<string>("2");
+  const [defaultGrade, setDefaultGrade] = useState<string>("2");
+  const [grade, setGrade] = useState<string>(defaultGrade);
 
   const [studentList, studentListHandler] = useListState<IStudent>();
   const fuse = new Fuse(studentList, { keys: ["name", "surname", "email"], threshold: 0.3 })
@@ -59,10 +60,10 @@ export function Grader() {
   const textInputRef = useRef<HTMLInputElement>(null);
   const numberInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    // textInputRef.current?.select()
-    console.log(updatedStudents)
-  }, [modalOpened])
+  // useEffect(() => {
+  //   // textInputRef.current?.select()
+  //   console.log(updatedStudents)
+  // }, [modalOpened])
 
   const onComboboxSubmit = () => {
     if (filteredStudentList.length != 1) {
@@ -94,8 +95,24 @@ export function Grader() {
     }
 
     textInputRef.current?.select()
-    setGrade("2")
+    setGrade(defaultGrade)
   }
+
+  const openDeleteGradeModal = () => modals.openConfirmModal({
+    title: "Clear grades column",
+    children: (
+      <Text>
+        Are you sure you want to delete all the student grades from the table?
+        <Space />
+        This action is destructive and non-reversable!
+      </Text>
+    ),
+    labels: { confirm: "Clear all grades", cancel: "Cancel" },
+    confirmProps: { color: "red" },
+    onConfirm: () => {
+      studentListHandler.apply(student => ({ ...student, grade: "" }))
+    },
+  })
 
   return (
     <>
@@ -137,21 +154,29 @@ export function Grader() {
               }]])}
               ref={textInputRef}
             />
-            <NumberInput
-              ref={numberInputRef}
-              value={grade}
-              onChange={v => { setGrade(v.toString()) }}
-              min={0}
-              max={2}
-              step={0.25}
-              onKeyDown={getHotkeyHandler([['enter', onResultSubmit]])} />
-            <Flex align={"center"} justify={"space-between"}>
-              <Text>{studentList.length} students loaded, {filteredStudentList.length} displayed</Text>
+            <Flex align="end" justify="space-between" gap="xs">
+              <NumberInput
+                label="Lab grade"
+                style={{ flexGrow: 1 }}
+                ref={numberInputRef}
+                value={grade}
+                onChange={v => { setGrade(v.toString()) }}
+                min={0}
+                max={2}
+                step={0.25}
+                onKeyDown={getHotkeyHandler([['enter', onResultSubmit]])}
+              />
+              <Button onClick={() => { setDefaultGrade(grade); notifications.show({ message: `Default changed to ${grade}` }) }}>Set default</Button>
+            </Flex>
+            <Flex justify="center" gap="md">
               <Button onClick={() => navigator.clipboard.writeText(studentList.map(v => `${v.email}\t${v.grade}`).join('\n'))}>Copy to clipboard</Button>
+              <Button onClick={openDeleteGradeModal}>Clear grades</Button>
             </Flex>
-            <Flex justify="center">
-              <Text>{studentList.filter(v => v.grade !== "").length} students graded</Text>
+            <Flex justify="center" gap="xs">
+              <Text>{studentList.length} students loaded</Text>
+              <Text>{filteredStudentList.length} displayed</Text>
             </Flex>
+            <Text style={{ alignSelf: "center" }}>{studentList.filter(v => v.grade !== "").length} students graded</Text>
           </Stack>
         </Container>
 
