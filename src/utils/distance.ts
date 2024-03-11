@@ -1,5 +1,5 @@
 export function sift3(s1: string, s2: string) {
-  var c, i, lcs, maxOffset, offset1, offset2;
+  let c, i, lcs, maxOffset, offset1, offset2;
   if (!(s1 != null) || s1.length === 0) {
     if (!(s2 != null) || s2.length === 0) {
       return 0;
@@ -35,7 +35,8 @@ export function sift3(s1: string, s2: string) {
 }
 
 export function levenshtein(s: string, t: string) {
-  var c1, c2, cost, d, i, j, m, n, _len, _len2;
+  let d: number[][];
+  let c1, c2, cost, i, j, m, n, _len, _len2;
   n = s.length;
   m = t.length;
   if (n === 0) {
