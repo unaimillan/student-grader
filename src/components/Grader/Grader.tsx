@@ -9,18 +9,32 @@ import { modals } from '@mantine/modals';
 import Fuse from 'fuse.js';
 import { levenshtein } from '../../utils/distance';
 
-function getFilteredOptions(studentList: IStudent[], searchQuery: string, limit: number) {
-  const fuse = new Fuse(studentList, { keys: ['name', 'surname', 'email'], threshold: 0.3 });
-  const fusedResult = fuse.search(searchQuery, { limit }).map(v => v.item);
+function getFilteredOptions(studentList: IStudent[], searchQuery: string, limit: number): IStudent[] {
+  const subqueries = searchQuery.split(' ');
 
-  const result: { dist: number, item: IStudent }[] = fusedResult
-    .map(v => ({ dist: levenshtein(v.email.split('@')[0], searchQuery), item: v }))
-    .toSorted((a, b) => a.dist - b.dist);
+  if (subqueries.length > 1) {
+    const [surname, name, ...other] = subqueries;
+    // console.log('C', subqueries, surname, name)
 
-  if (result.length > 0 && result[0].dist === 0) {
-    return [result[0].item];
+    const result = studentList
+        .filter(st => st.surname.toLowerCase().startsWith(surname.toLowerCase()) && st.name.toLowerCase().startsWith(name.toLowerCase()))
+        .slice(0, limit)
+    
+    return result.map(v => v)
+  } else {
+    const fuse = new Fuse(studentList, { keys: ['name', 'surname', 'email'], threshold: 0.3 });
+    const fusedResult = fuse.search(searchQuery, { limit }).map(v => v.item);
+
+    const result: { dist: number, item: IStudent }[] = fusedResult
+      .map(v => ({ dist: levenshtein(v.email.split('@')[0], searchQuery), item: v }))
+      .toSorted((a, b) => a.dist - b.dist);
+
+    if (result.length > 0 && result[0].dist === 0) {
+      return [result[0].item];
+    }
+    return result.map(v => v.item);
   }
-  return result.map(v => v.item);
+
 }
 
 const toMatrix = (students: IStudent[]): Matrix<{ value: string }> => students.map(s => [
