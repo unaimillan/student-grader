@@ -1,8 +1,8 @@
 /* eslint-disable max-len */
 import { Title, Text, Button, Container, NumberInput, Center, Modal, Space, Flex, Stack, TextInput, Alert } from '@mantine/core';
-import { getHotkeyHandler, useDebouncedState, useDisclosure, useListState } from '@mantine/hooks';
+import { getHotkeyHandler, useDebouncedState, useDisclosure, useListState, useLocalStorage } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Spreadsheet, { Matrix } from 'react-spreadsheet';
 import { InfoCircle } from 'tabler-icons-react';
 import { modals } from '@mantine/modals';
@@ -17,9 +17,9 @@ function getFilteredOptions(studentList: IStudent[], searchQuery: string, limit:
     // console.log('C', subqueries, surname, name)
 
     const result = studentList
-        .filter(st => st.surname.toLowerCase().startsWith(surname.toLowerCase()) && st.name.toLowerCase().startsWith(name.toLowerCase()))
-        .slice(0, limit)
-    
+      .filter(st => st.surname.toLowerCase().startsWith(surname.toLowerCase()) && st.name.toLowerCase().startsWith(name.toLowerCase()))
+      .slice(0, limit)
+
     return result.map(v => v)
   } else {
     const fuse = new Fuse(studentList, { keys: ['name', 'surname', 'email'], threshold: 0.3 });
@@ -38,32 +38,45 @@ function getFilteredOptions(studentList: IStudent[], searchQuery: string, limit:
 }
 
 const toMatrix = (students: IStudent[]): Matrix<{ value: string }> => students.map(s => [
-  { value: s.name }, { value: s.surname }, { value: s.email }, { value: s.grade.toString() }]);
+  { value: s.name }, { value: s.surname }, { value: s.email }, { value: s.grade1.toString() }, { value: s.grade2.toString() }]);
 
 const toReadonlyMatrix = (students: IStudent[]): Matrix<{ value: string }> => students.map(s => [
-  { value: s.name, readOnly: true }, { value: s.surname, readOnly: true }, { value: s.email, readOnly: true }, { value: s.grade.toString(), readOnly: true }]);
+  { value: s.name, readOnly: true },
+  { value: s.surname, readOnly: true },
+  { value: s.email, readOnly: true },
+  { value: s.grade1.toString(), readOnly: true },
+  { value: s.grade2.toString(), readOnly: true }
+]);
 
 const fromMatrix = (data: Matrix<{ value: string }>): IStudent[] => data.map(v => (
-  { name: v[0]?.value || '', surname: v[1]?.value || '', email: v[2]?.value || '', grade: v[3]?.value || '' }));
+  { name: v[0]?.value || '', surname: v[1]?.value || '', email: v[2]?.value || '', grade1: v[3]?.value || '', grade2: v[4]?.value || '' }));
 
 export function Grader() {
   const rawStudents: IStudent[] = [
-    { name: '', surname: '', email: '', grade: '' },
+    { name: '', surname: '', email: '', grade1: '', grade2: '' },
   ];
 
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
 
   const [searchValue, setSearchValue] = useDebouncedState('', 300);
-  const [defaultGrade, setDefaultGrade] = useState<string>('2');
-  const [grade, setGrade] = useState<string>(defaultGrade);
+  const [defaultGrade1, setDefaultGrade1] = useState<string>('2');
+  const [defaultGrade2, setDefaultGrade2] = useState<string>('2');
+  const [grade1, setGrade1] = useState<string>(defaultGrade1);
+  const [grade2, setGrade2] = useState<string>(defaultGrade2);
 
+  // TODO: Add local
+  // const [storedList, setStoredList] = useLocalStorage<IStudent[]>({
+  //   key: 'student-grader-storedList',
+  //   defaultValue: []
+  // });
   const [studentList, studentListHandler] = useListState<IStudent>();
   const filteredStudentList = searchValue ? getFilteredOptions(studentList, searchValue, 15) : studentList;
 
   const [updatedStudents, updatedStudentsHandler] = useListState<IStudent>([]);
 
   const textInputRef = useRef<HTMLInputElement>(null);
-  const numberInputRef = useRef<HTMLInputElement>(null);
+  const grade1Ref = useRef<HTMLInputElement>(null);
+  const grade2Ref = useRef<HTMLInputElement>(null);
 
   // useEffect(() => {
   //   // textInputRef.current?.select()
@@ -78,7 +91,7 @@ export function Grader() {
 
     // notifications.show({ title: "Student selected", message: `${student.name} ${student.surname}` });
     // setSelectedStudent(student);
-    numberInputRef.current?.select();
+    grade1Ref.current?.select();
   };
 
   const onResultSubmit = () => {
@@ -90,17 +103,20 @@ export function Grader() {
 
     const student = filteredStudentList.at(0)!;
     const index = studentList.findIndex(v => v.email === student.email);
-    studentListHandler.setItemProp(index, 'grade', grade);
+    studentListHandler.setItemProp(index, 'grade1', grade1);
+    studentListHandler.setItemProp(index, 'grade2', grade2);
 
     const backupIndex = updatedStudents.findIndex(v => v.email === student.email);
     if (backupIndex - 1) {
-      updatedStudentsHandler.insert(0, { ...student, grade });
+      updatedStudentsHandler.insert(0, { ...student, grade1, grade2 });
     } else {
-      updatedStudentsHandler.setItemProp(backupIndex, 'grade', grade);
+      updatedStudentsHandler.setItemProp(backupIndex, 'grade1', grade1);
+      updatedStudentsHandler.setItemProp(backupIndex, 'grade2', grade2);
     }
 
     textInputRef.current?.select();
-    setGrade(defaultGrade);
+    setGrade1(defaultGrade1);
+    setGrade2(defaultGrade2);
   };
 
   const openDeleteGradeModal = () => modals.openConfirmModal({
@@ -127,7 +143,7 @@ export function Grader() {
             <Alert style={{ alignSelf: 'center' }} title="Alert" color="red" icon={<InfoCircle />}>Any changes here will override all your data!</Alert>
             <Spreadsheet
               data={toReadonlyMatrix(studentList)}
-              columnLabels={['Name', 'Surname', 'Email', 'Grade']}
+              columnLabels={['Name', 'Surname', 'Email', 'Grade1', 'Grade2']}
               rowLabels={['1']}
               onChange={data => { studentListHandler.setState(fromMatrix(data)); }}
             />
@@ -151,6 +167,7 @@ export function Grader() {
           <Stack>
             <TextInput
               label="Start entering student name, surname, or email"
+              tabIndex={3}
               defaultValue={searchValue}
               onChange={(event) => setSearchValue(event.currentTarget.value)}
               onKeyDown={getHotkeyHandler([['enter', onComboboxSubmit], ['escape', () => {
@@ -161,27 +178,43 @@ export function Grader() {
             />
             <Flex align="end" justify="space-between" gap="xs">
               <NumberInput
-                label="Lab grade"
+                label="Grade 1"
                 style={{ flexGrow: 1 }}
-                ref={numberInputRef}
-                value={grade}
-                onChange={v => { setGrade(v.toString()); }}
+                tabIndex={4}
+                ref={grade1Ref}
+                value={grade1}
+                onChange={v => { setGrade1(v.toString()); }}
+                min={0}
+                max={2}
+                step={0.25}
+                onKeyDown={getHotkeyHandler([['enter', () => grade2Ref.current?.select()]])}
+              />
+              <Button onClick={() => { setDefaultGrade1(grade1); notifications.show({ message: `Default changed to ${grade1}` }); }}>Set default</Button>
+            </Flex>
+            <Flex align="end" justify="space-between" gap="xs">
+              <NumberInput
+                label="Grade 2"
+                style={{ flexGrow: 1 }}
+                tabIndex={5}
+                ref={grade2Ref}
+                value={grade2}
+                onChange={v => { setGrade2(v.toString()); }}
                 min={0}
                 max={2}
                 step={0.25}
                 onKeyDown={getHotkeyHandler([['enter', onResultSubmit]])}
               />
-              <Button onClick={() => { setDefaultGrade(grade); notifications.show({ message: `Default changed to ${grade}` }); }}>Set default</Button>
+              <Button onClick={() => { setDefaultGrade2(grade2); notifications.show({ message: `Default changed to ${grade2}` }); }}>Set default</Button>
             </Flex>
             <Flex justify="center" gap="md">
-              <Button onClick={() => navigator.clipboard.writeText(studentList.map(v => `${v.email}\t${v.grade}`).join('\n'))}>Copy to clipboard</Button>
+              <Button onClick={() => navigator.clipboard.writeText(studentList.map(v => `${v.email}\t${v.grade1}\t${v.grade2}`).join('\n'))}>Copy to clipboard</Button>
               <Button onClick={openDeleteGradeModal}>Clear grades</Button>
             </Flex>
             <Flex justify="center" gap="xs">
               <Text>{studentList.length} students loaded</Text>
               <Text>{filteredStudentList.length} displayed</Text>
             </Flex>
-            <Text style={{ alignSelf: 'center' }}>{studentList.filter(v => v.grade !== '').length} students graded</Text>
+            <Text style={{ alignSelf: 'center' }}>{studentList.filter(v => v.grade1 !== '' || v.grade2 !== '').length} students graded</Text>
           </Stack>
         </Container>
 
@@ -189,7 +222,7 @@ export function Grader() {
           <Container>
             <Spreadsheet
               data={toMatrix(filteredStudentList)}
-              columnLabels={['Name', 'Surname', 'Email', 'Grade']}
+              columnLabels={['Name', 'Surname', 'Email', 'Grade1', 'Grade2']}
             />
           </Container>
         </Center>
