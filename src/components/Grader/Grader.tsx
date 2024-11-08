@@ -7,34 +7,13 @@ import Spreadsheet, { Matrix } from 'react-spreadsheet';
 import { InfoCircle } from 'tabler-icons-react';
 import { modals } from '@mantine/modals';
 import Fuse from 'fuse.js';
+import * as fuzz from 'fuzzball';
 import { levenshtein } from '../../utils/distance';
 
 function getFilteredOptions(studentList: IStudent[], searchQuery: string, limit: number): IStudent[] {
-  const subqueries = searchQuery.split(' ');
-
-  if (subqueries.length > 1) {
-    const [surname, name, ...other] = subqueries;
-    // console.log('C', subqueries, surname, name)
-
-    const result = studentList
-      .filter(st => st.surname.toLowerCase().startsWith(surname.toLowerCase()) && st.name.toLowerCase().startsWith(name.toLowerCase()))
-      .slice(0, limit)
-
-    return result.map(v => v)
-  } else {
-    const fuse = new Fuse(studentList, { keys: ['name', 'surname', 'email'], threshold: 0.3 });
-    const fusedResult = fuse.search(searchQuery, { limit }).map(v => v.item);
-
-    const result: { dist: number, item: IStudent }[] = fusedResult
-      .map(v => ({ dist: levenshtein(v.email.split('@')[0], searchQuery), item: v }))
-      .toSorted((a, b) => a.dist - b.dist);
-
-    if (result.length > 0 && result[0].dist === 0) {
-      return [result[0].item];
-    }
-    return result.map(v => v.item);
-  }
-
+  const studentStrings = studentList.map(st => st.name + st.surname + st.email);
+  const result = fuzz.extract(searchQuery, studentStrings, { cutoff: 0, limit });
+  return result.map(res => studentList[res[2]]);
 }
 
 const toMatrix = (students: IStudent[]): Matrix<{ value: string }> => students.map(s => [
@@ -45,7 +24,7 @@ const toReadonlyMatrix = (students: IStudent[]): Matrix<{ value: string }> => st
   { value: s.surname, readOnly: true },
   { value: s.email, readOnly: true },
   { value: s.grade1.toString(), readOnly: true },
-  { value: s.grade2.toString(), readOnly: true }
+  { value: s.grade2.toString(), readOnly: true },
 ]);
 
 const fromMatrix = (data: Matrix<{ value: string }>): IStudent[] => data.map(v => (
