@@ -6,7 +6,7 @@ import { ModalsProvider } from '@mantine/modals';
 import { Router } from './Router';
 import { theme } from './theme';
 
-export default function App() {
+export function App() {
   return (
     <MantineProvider theme={theme}>
       <ModalsProvider>

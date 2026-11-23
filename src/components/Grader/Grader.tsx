@@ -1,144 +1,206 @@
-/* eslint-disable max-len */
-import { Title, Text, Button, Container, NumberInput, Center, Modal, Space, Flex, Stack, TextInput, Alert } from '@mantine/core';
-import { getHotkeyHandler, useDebouncedState, useDisclosure, useListState, useLocalStorage } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
-import { useEffect, useRef, useState } from 'react';
-import Spreadsheet, { Matrix } from 'react-spreadsheet';
-import { InfoCircle } from 'tabler-icons-react';
+import { Button, Container, Flex, NumberInput, Stack, Text, TextInput, Title } from '@mantine/core';
+import {
+  getHotkeyHandler,
+  useDebouncedValue,
+  useDisclosure,
+  useLocalStorage,
+} from '@mantine/hooks';
 import { modals } from '@mantine/modals';
-import Fuse from 'fuse.js';
-import * as fuzz from 'fuzzball';
-import { levenshtein } from '../../utils/distance';
+import { notifications } from '@mantine/notifications';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Settings } from 'tabler-icons-react';
+import {
+  DEFAULT_GRADE_COUNT,
+  normalizeDefaultGrades,
+  normalizeGradeCount,
+  normalizeGrades,
+  normalizeStudents,
+  Student,
+} from '../../types/student';
+import { createStudentSearchIndex, filterStudents } from '../../utils/search';
+import { formatGradesTsv, getGradeColumnLabels } from '../../utils/spreadsheet';
+import { ImportStudentsModal } from './ImportStudentsModal';
+import { SettingsModal } from './SettingsModal';
+import { StudentTable } from './StudentTable';
 
-function getFilteredOptions(studentList: IStudent[], searchQuery: string, limit: number): IStudent[] {
-  const studentStrings = studentList.map(st => st.name + st.surname + st.email);
-  const result = fuzz.extract(searchQuery, studentStrings, { cutoff: 0, limit });
-  return result.map(res => studentList[res[2]]);
-}
+const STORAGE_KEYS = {
+  students: 'student-grader-students',
+  gradeCount: 'student-grader-grade-count',
+  defaultGrades: 'student-grader-default-grades',
+} as const;
 
-const toMatrix = (students: IStudent[]): Matrix<{ value: string }> => students.map(s => [
-  { value: s.name }, { value: s.surname }, { value: s.email }, { value: s.grade1.toString() }, { value: s.grade2.toString() }]);
-
-const toReadonlyMatrix = (students: IStudent[]): Matrix<{ value: string }> => students.map(s => [
-  { value: s.name, readOnly: true },
-  { value: s.surname, readOnly: true },
-  { value: s.email, readOnly: true },
-  { value: s.grade1.toString(), readOnly: true },
-  { value: s.grade2.toString(), readOnly: true },
-]);
-
-const fromMatrix = (data: Matrix<{ value: string }>): IStudent[] => data.map(v => (
-  { name: v[0]?.value || '', surname: v[1]?.value || '', email: v[2]?.value || '', grade1: v[3]?.value || '', grade2: v[4]?.value || '' }));
+const SEARCH_RESULT_LIMIT = 15;
 
 export function Grader() {
-  const rawStudents: IStudent[] = [
-    { name: '', surname: '', email: '', grade1: '', grade2: '' },
-  ];
-
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
+  const [settingsOpened, { open: openSettings, close: closeSettings }] = useDisclosure(false);
 
-  const [searchValue, setSearchValue] = useDebouncedState('', 300);
-  const [defaultGrade1, setDefaultGrade1] = useState<string>('2');
-  const [defaultGrade2, setDefaultGrade2] = useState<string>('2');
-  const [grade1, setGrade1] = useState<string>(defaultGrade1);
-  const [grade2, setGrade2] = useState<string>(defaultGrade2);
+  const [rawGradeCount, setRawGradeCount] = useLocalStorage<number>({
+    key: STORAGE_KEYS.gradeCount,
+    defaultValue: DEFAULT_GRADE_COUNT,
+  });
+  const gradeCount = useMemo(() => normalizeGradeCount(rawGradeCount), [rawGradeCount]);
 
-  // TODO: Add local
-  // const [storedList, setStoredList] = useLocalStorage<IStudent[]>({
-  //   key: 'student-grader-storedList',
-  //   defaultValue: []
-  // });
-  const [studentList, studentListHandler] = useListState<IStudent>();
-  const filteredStudentList = searchValue ? getFilteredOptions(studentList, searchValue, 15) : studentList;
+  const [rawDefaultGrades, setDefaultGrades] = useLocalStorage<string[]>({
+    key: STORAGE_KEYS.defaultGrades,
+    defaultValue: ['2'],
+  });
+  const defaultGrades = useMemo(
+    () => normalizeDefaultGrades(rawDefaultGrades, gradeCount),
+    [rawDefaultGrades, gradeCount]
+  );
 
-  const [updatedStudents, updatedStudentsHandler] = useListState<IStudent>([]);
+  const [rawStudents, setStudents] = useLocalStorage<Student[]>({
+    key: STORAGE_KEYS.students,
+    defaultValue: [],
+  });
+  const studentList = useMemo(
+    () => normalizeStudents(rawStudents, gradeCount),
+    [rawStudents, gradeCount]
+  );
 
-  const textInputRef = useRef<HTMLInputElement>(null);
-  const grade1Ref = useRef<HTMLInputElement>(null);
-  const grade2Ref = useRef<HTMLInputElement>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch] = useDebouncedValue(searchInput, 200);
+  const [grades, setGrades] = useState<string[]>(defaultGrades);
 
-  // useEffect(() => {
-  //   // textInputRef.current?.select()
-  //   console.log(updatedStudents)
-  // }, [modalOpened])
+  useEffect(() => {
+    setGrades((prev) =>
+      Array.from(Array(gradeCount).keys(), (index) => prev[index] ?? defaultGrades[index])
+    );
+  }, [gradeCount, defaultGrades]);
 
-  const onComboboxSubmit = () => {
-    if (filteredStudentList.length !== 1) {
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const gradeInputRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const focusAndSelectInput = (el: HTMLElement | null) => {
+    if (!el) {
+      return;
+    }
+    const input = el instanceof HTMLInputElement ? el : el.querySelector('input');
+    input?.focus();
+    input?.select();
+  };
+
+  const fuseIndex = useMemo(() => createStudentSearchIndex(studentList), [studentList]);
+
+  const filteredStudentList = useMemo(
+    () => filterStudents(studentList, debouncedSearch, SEARCH_RESULT_LIMIT, fuseIndex),
+    [studentList, debouncedSearch, fuseIndex]
+  );
+
+  const getImmediateMatches = () =>
+    filterStudents(studentList, searchInput, SEARCH_RESULT_LIMIT, fuseIndex);
+
+  const gradeLabels = useMemo(() => getGradeColumnLabels(gradeCount), [gradeCount]);
+
+  const onSearchSubmit = () => {
+    const matches = getImmediateMatches();
+    if (matches.length !== 1) {
       notifications.show({ message: 'Exactly one student should be selected', color: 'red' });
       return;
     }
-
-    // notifications.show({ title: "Student selected", message: `${student.name} ${student.surname}` });
-    // setSelectedStudent(student);
-    grade1Ref.current?.select();
+    focusAndSelectInput(gradeInputRefs.current[0] ?? null);
   };
 
   const onResultSubmit = () => {
-    if (filteredStudentList.length !== 1) {
+    const matches = getImmediateMatches();
+    if (matches.length !== 1) {
       notifications.show({ message: 'Exactly one student should be selected', color: 'red' });
-      textInputRef.current?.select();
+      searchInputRef.current?.select();
       return;
     }
 
-    const student = filteredStudentList.at(0)!;
-    const index = studentList.findIndex(v => v.email === student.email);
-    studentListHandler.setItemProp(index, 'grade1', grade1);
-    studentListHandler.setItemProp(index, 'grade2', grade2);
-
-    const backupIndex = updatedStudents.findIndex(v => v.email === student.email);
-    if (backupIndex - 1) {
-      updatedStudentsHandler.insert(0, { ...student, grade1, grade2 });
-    } else {
-      updatedStudentsHandler.setItemProp(backupIndex, 'grade1', grade1);
-      updatedStudentsHandler.setItemProp(backupIndex, 'grade2', grade2);
+    const selectedStudent = matches[0];
+    const targetIndex = studentList.indexOf(selectedStudent);
+    if (targetIndex === -1) {
+      return;
     }
 
-    textInputRef.current?.select();
-    setGrade1(defaultGrade1);
-    setGrade2(defaultGrade2);
+    const nextGrades = normalizeGrades(grades, gradeCount);
+    setStudents(
+      studentList.map((student, index) =>
+        index === targetIndex ? { ...student, grades: nextGrades } : student
+      )
+    );
+
+    searchInputRef.current?.select();
+    setGrades(defaultGrades);
   };
 
-  const openDeleteGradeModal = () => modals.openConfirmModal({
-    title: 'Clear grades column',
-    children: (
-      <Text>
-        Are you sure you want to delete all the student grades from the table?
-        <Space />
-        This action is destructive and non-reversable!
-      </Text>
-    ),
-    labels: { confirm: 'Clear all grades', cancel: 'Cancel' },
-    confirmProps: { color: 'red' },
-    onConfirm: () => {
-      studentListHandler.apply(student => ({ ...student, grade: '' }));
-    },
-  });
+  const handleImportChange = (imported: Student[], detectedGradeCount: number) => {
+    if (detectedGradeCount > gradeCount) {
+      setRawGradeCount(detectedGradeCount);
+      setDefaultGrades(normalizeDefaultGrades(rawDefaultGrades, detectedGradeCount));
+    }
+    setStudents(imported);
+  };
+
+  const handleGradeCountChange = (nextGradeCount: number) => {
+    setRawGradeCount(normalizeGradeCount(nextGradeCount));
+  };
+
+  const handleCopyToClipboard = async () => {
+    const text = formatGradesTsv(studentList, gradeCount);
+    try {
+      if (!navigator.clipboard) {
+        throw new Error('Clipboard API unavailable');
+      }
+      await navigator.clipboard.writeText(text);
+      notifications.show({ message: 'Grades copied to clipboard', color: 'green' });
+    } catch {
+      notifications.show({ message: 'Failed to copy grades to clipboard', color: 'red' });
+    }
+  };
+
+  const openDeleteGradeModal = () =>
+    modals.openConfirmModal({
+      title: 'Clear grades column',
+      children: (
+        <Stack gap="xs">
+          <Text>Are you sure you want to delete all the student grades from the table?</Text>
+          <Text>This action is destructive and non-reversible!</Text>
+        </Stack>
+      ),
+      labels: { confirm: 'Clear all grades', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => {
+        const emptyGrades = Array.from({ length: gradeCount }, () => '');
+        setStudents(studentList.map((student) => ({ ...student, grades: emptyGrades })));
+      },
+    });
+
+  const gradedCount = studentList.filter((student) =>
+    student.grades.some((gradeValue) => gradeValue !== '')
+  ).length;
 
   return (
     <>
-      <Modal opened={modalOpened} onClose={closeModal} title="Copy students from the spreadsheet" size="auto">
-        <Container>
-          <Flex direction="column" align="end" gap="md">
-            <Alert style={{ alignSelf: 'center' }} title="Alert" color="red" icon={<InfoCircle />}>Any changes here will override all your data!</Alert>
-            <Spreadsheet
-              data={toReadonlyMatrix(studentList)}
-              columnLabels={['Name', 'Surname', 'Email', 'Grade1', 'Grade2']}
-              rowLabels={['1']}
-              onChange={data => { studentListHandler.setState(fromMatrix(data)); }}
-            />
-            <Button onClick={closeModal}>Close</Button>
-          </Flex>
-        </Container>
-      </Modal>
+      <ImportStudentsModal
+        opened={modalOpened}
+        onClose={closeModal}
+        students={studentList}
+        gradeCount={gradeCount}
+        onChange={handleImportChange}
+      />
 
-      <Container pt={60}>
-        <Title ta="center">
-          Student Grade Importer
-        </Title>
+      <SettingsModal
+        opened={settingsOpened}
+        onClose={closeSettings}
+        gradeCount={gradeCount}
+        onGradeCountChange={handleGradeCountChange}
+      />
+
+      <Container pt={60} pb={60}>
+        <Title ta="center">Student Grader</Title>
         <Container mt="md">
           <Stack gap="xs" align="center">
-            <Text>Copy students from spreadsheet and start editing</Text>
-            <Button onClick={openModal}>Import Students</Button>
+            <Text>Copy students from spreadsheet and start grading</Text>
+            <Flex gap="xs" wrap="wrap" justify="center">
+              <Button onClick={openModal}>Import Students</Button>
+              <Button variant="light" leftSection={<Settings size={16} />} onClick={openSettings}>
+                Settings
+              </Button>
+            </Flex>
           </Stack>
         </Container>
 
@@ -146,65 +208,76 @@ export function Grader() {
           <Stack>
             <TextInput
               label="Start entering student name, surname, or email"
-              tabIndex={3}
-              defaultValue={searchValue}
-              onChange={(event) => setSearchValue(event.currentTarget.value)}
-              onKeyDown={getHotkeyHandler([['enter', onComboboxSubmit], ['escape', () => {
-                if (textInputRef.current) { textInputRef.current.value = ''; }
-                setSearchValue('');
-              }]])}
-              ref={textInputRef}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.currentTarget.value)}
+              onKeyDown={getHotkeyHandler([
+                ['enter', onSearchSubmit],
+                ['escape', () => setSearchInput('')],
+              ])}
+              ref={searchInputRef}
             />
-            <Flex align="end" justify="space-between" gap="xs">
-              <NumberInput
-                label="Grade 1"
-                style={{ flexGrow: 1 }}
-                tabIndex={4}
-                ref={grade1Ref}
-                value={grade1}
-                onChange={v => { setGrade1(v.toString()); }}
-                min={0}
-                max={2}
-                step={0.25}
-                onKeyDown={getHotkeyHandler([['enter', () => grade2Ref.current?.select()]])}
-              />
-              <Button onClick={() => { setDefaultGrade1(grade1); notifications.show({ message: `Default changed to ${grade1}` }); }}>Set default</Button>
-            </Flex>
-            <Flex align="end" justify="space-between" gap="xs">
-              <NumberInput
-                label="Grade 2"
-                style={{ flexGrow: 1 }}
-                tabIndex={5}
-                ref={grade2Ref}
-                value={grade2}
-                onChange={v => { setGrade2(v.toString()); }}
-                min={0}
-                max={2}
-                step={0.25}
-                onKeyDown={getHotkeyHandler([['enter', onResultSubmit]])}
-              />
-              <Button onClick={() => { setDefaultGrade2(grade2); notifications.show({ message: `Default changed to ${grade2}` }); }}>Set default</Button>
-            </Flex>
+
+            {gradeLabels.map((label, index) => {
+              const isLast = index === gradeLabels.length - 1;
+              const currentValue = grades[index] ?? defaultGrades[index] ?? '';
+              const handleEnter = isLast
+                ? onResultSubmit
+                : () => focusAndSelectInput(gradeInputRefs.current[index + 1] ?? null);
+
+              return (
+                <Flex key={label} align="end" justify="space-between" gap="xs">
+                  <NumberInput
+                    label={label}
+                    style={{ flexGrow: 1 }}
+                    ref={(el) => {
+                      gradeInputRefs.current[index] = el;
+                    }}
+                    value={currentValue}
+                    onChange={(value) => {
+                      const nextValue = value.toString();
+                      setGrades((prev) =>
+                        Array.from(Array(gradeCount).keys(), (idx) =>
+                          idx === index ? nextValue : prev[idx] ?? ''
+                        )
+                      );
+                    }}
+                    min={0}
+                    max={2}
+                    step={0.25}
+                    onKeyDown={getHotkeyHandler([['enter', handleEnter]])}
+                  />
+                  <Button
+                    onClick={() => {
+                      setDefaultGrades(
+                        defaultGrades.map((item, idx) => (idx === index ? currentValue : item))
+                      );
+                      notifications.show({
+                        message: `${label} default changed to ${currentValue}`,
+                      });
+                    }}
+                  >
+                    Set default
+                  </Button>
+                </Flex>
+              );
+            })}
+
             <Flex justify="center" gap="md">
-              <Button onClick={() => navigator.clipboard.writeText(studentList.map(v => `${v.email}\t${v.grade1}\t${v.grade2}`).join('\n'))}>Copy to clipboard</Button>
-              <Button onClick={openDeleteGradeModal}>Clear grades</Button>
+              <Button onClick={handleCopyToClipboard}>Copy to clipboard</Button>
+              <Button color="red" variant="outline" onClick={openDeleteGradeModal}>
+                Clear grades
+              </Button>
             </Flex>
+
             <Flex justify="center" gap="xs">
               <Text>{studentList.length} students loaded</Text>
               <Text>{filteredStudentList.length} displayed</Text>
             </Flex>
-            <Text style={{ alignSelf: 'center' }}>{studentList.filter(v => v.grade1 !== '' || v.grade2 !== '').length} students graded</Text>
+            <Text style={{ alignSelf: 'center' }}>{gradedCount} students graded</Text>
           </Stack>
         </Container>
 
-        <Center mt="lg">
-          <Container>
-            <Spreadsheet
-              data={toMatrix(filteredStudentList)}
-              columnLabels={['Name', 'Surname', 'Email', 'Grade1', 'Grade2']}
-            />
-          </Container>
-        </Center>
+        <StudentTable students={filteredStudentList} gradeCount={gradeCount} />
       </Container>
     </>
   );

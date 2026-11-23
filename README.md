@@ -1,64 +1,36 @@
 # Student Grader
 
-Upload list of students, then search and grade the ones you want
+Upload or paste a list of students, search interactively, and assign grades across one or more grade columns.
 
-> Built with: MantineUI + React + TypeScript + Vite
+> Built with: MantineUI + React + TypeScript + Vite + pnpm
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Usage
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Features
-
-This template comes with the following features:
-
-- [PostCSS](https://postcss.org/) with [mantine-postcss-preset](https://mantine.dev/styles/postcss-preset)
-- [TypeScript](https://www.typescriptlang.org/)
-- [Storybook](https://storybook.js.org/)
-- [Jest](https://jestjs.io/) setup with [React Testing Library](https://testing-library.com/docs/react-testing-library/intro)
-- ESLint setup with [eslint-config-mantine](https://github.com/mantinedev/eslint-config-mantine)
+1. Click **Import Students** and paste rows from a spreadsheet (`Name`, `Surname`, `Email`, followed by grade columns).
+2. Type a student's name, surname, or email prefix to filter down to a single student, then press **Enter**.
+3. Enter grades across the grade inputs (press **Enter** to advance between inputs and submit on the last input).
+4. Use **Copy to clipboard** to export `email` and grades as tab-separated values (`TSV`).
+5. Student rows and default grade settings persist automatically in `localStorage`.
 
 ## pnpm scripts
 
-## Build and dev scripts
+### Build and dev scripts
 
-- `dev` – start development server
-- `build` – build production version of the app
-- `preview` – locally preview production build
+- `pnpm dev` – start development server
+- `pnpm build` – typecheck and build production version of the app
+- `pnpm preview` – locally preview production build
 
-### Testing scripts
+### Testing and quality scripts
 
-- `typecheck` – checks TypeScript types
-- `lint` – runs ESLint
-- `prettier:check` – checks files with Prettier
-- `jest` – runs jest tests
-- `jest:watch` – starts jest watch
-- `test` – runs `jest`, `prettier:check`, `lint` and `typecheck` scripts
+- `pnpm run typecheck` – checks TypeScript types (`tsc --noEmit`)
+- `pnpm run prettier` – checks formatting with Prettier
+- `pnpm run prettier:write` – formats all TypeScript files with Prettier
+- `pnpm run lint` – runs ESLint across `src` and `test-utils`
+- `pnpm run jest` – runs Jest unit and component tests
+- `pnpm run jest:watch` – starts Jest in watch mode
+- `pnpm test` – runs `typecheck`, `prettier`, `lint`, `jest`, and `build`
 
-### Other scripts
+### Storybook scripts
 
-- `storybook` – starts storybook dev server
-- `storybook:build` – build production storybook bundle to `storybook-static`
-- `prettier:write` – formats all files with Prettier
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-   parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-   },
-```
-
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+- `pnpm run storybook` – starts Storybook dev server on port 6006
+- `pnpm run storybook:build` – builds production Storybook bundle to `storybook-static`

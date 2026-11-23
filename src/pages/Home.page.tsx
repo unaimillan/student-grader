@@ -1,9 +1,5 @@
-import {Grader} from '../components/Grader/Grader'
+import { Grader } from '../components/Grader/Grader';
 
 export function HomePage() {
-  return (
-    <>
-      <Grader />
-    </>
-  );
+  return <Grader />;
 }
