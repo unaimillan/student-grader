@@ -2,6 +2,7 @@
   "name": "ca-student-grader",
   "private": true,
   "version": "0.0.1",
+  "packageManager": "pnpm@12.16.1",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -12,7 +13,7 @@
     "prettier:write": "prettier --write \"**/*.{ts,tsx}\"",
     "jest": "jest",
     "jest:watch": "jest --watch",
-    "test": "npm run typecheck && npm run prettier && npm run lint && npm run jest && npm run build",
+    "test": "pnpm run typecheck && pnpm run prettier && pnpm run lint && pnpm run jest && pnpm run build",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build"
   },
