@@ -131,4 +131,45 @@ describe('Grader', () => {
     await user.click(screen.getByRole('button', { name: 'Copy to clipboard' }));
     expect(writeText).toHaveBeenCalledWith('a.smith@example.edu\t2\t1.5');
   });
+
+  it('renders StudentTable via Glide DataEditor and shows empty state when search has no matches', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      'student-grader-students',
+      JSON.stringify([
+        { name: 'Alice', surname: 'Smith', email: 'a.smith@example.edu', grades: ['2'] },
+      ])
+    );
+
+    render(<Grader />);
+
+    expect(screen.getByTestId('data-grid-canvas')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('grid')).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Email' })).toBeInTheDocument();
+      expect(screen.getByRole('gridcell', { name: 'a.smith@example.edu' })).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByLabelText('Start entering student name, surname, or email');
+    await user.type(searchInput, 'nonexistent');
+
+    await waitFor(() => {
+      expect(screen.getByText('No matching students to display.')).toBeInTheDocument();
+    });
+  });
+
+  it('opens ImportStudentsModal with Glide DataEditor', async () => {
+    const user = userEvent.setup();
+    render(<Grader />);
+
+    await user.click(screen.getByRole('button', { name: 'Import Students' }));
+
+    expect(await screen.findByText('Import students from spreadsheet')).toBeInTheDocument();
+    expect(screen.getByTestId('data-grid-canvas')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => {
+      expect(screen.queryByText('Import students from spreadsheet')).not.toBeInTheDocument();
+    });
+  });
 });

@@ -178,3 +178,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Agent worktrees
+.agents/

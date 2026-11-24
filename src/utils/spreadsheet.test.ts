@@ -1,10 +1,13 @@
+import { GridCellKind } from '@glideapps/glide-data-grid';
 import { Student } from '../types/student';
 import {
+  applyStudentCellEdits,
+  applyStudentPaste,
   formatGradesTsv,
-  fromMatrix,
   getGradeColumnLabels,
   getSpreadsheetColumnLabels,
-  toMatrix,
+  getStudentGridCell,
+  getStudentGridColumns,
 } from './spreadsheet';
 
 describe('spreadsheet utilities', () => {
@@ -13,7 +16,7 @@ describe('spreadsheet utilities', () => {
     { name: 'Bob', surname: 'Jones', email: 'b.jones@example.edu', grades: ['1'] },
   ];
 
-  it('builds column labels for single and multiple grade columns', () => {
+  it('builds column labels and grid columns for single and multiple grade columns', () => {
     expect(getGradeColumnLabels(1)).toEqual(['Grade']);
     expect(getGradeColumnLabels(3)).toEqual(['Grade 1', 'Grade 2', 'Grade 3']);
     expect(getSpreadsheetColumnLabels(2)).toEqual([
@@ -23,51 +26,102 @@ describe('spreadsheet utilities', () => {
       'Grade 1',
       'Grade 2',
     ]);
-  });
 
-  it('serializes students to matrix with padded grades and optional readOnly flag', () => {
-    const matrix = toMatrix(students, 2, { readOnly: true });
-    expect(matrix).toEqual([
-      [
-        { value: 'Alice', readOnly: true },
-        { value: 'Smith', readOnly: true },
-        { value: 'a.smith@example.edu', readOnly: true },
-        { value: '2', readOnly: true },
-        { value: '1.5', readOnly: true },
-      ],
-      [
-        { value: 'Bob', readOnly: true },
-        { value: 'Jones', readOnly: true },
-        { value: 'b.jones@example.edu', readOnly: true },
-        { value: '1', readOnly: true },
-        { value: '', readOnly: true },
-      ],
+    expect(getStudentGridColumns(2, { email: 260 })).toEqual([
+      { id: 'name', title: 'Name', width: 140 },
+      { id: 'surname', title: 'Surname', width: 140 },
+      { id: 'email', title: 'Email', width: 260 },
+      { id: 'grade-0', title: 'Grade 1', width: 90 },
+      { id: 'grade-1', title: 'Grade 2', width: 90 },
     ]);
   });
 
-  it('parses matrix rows, skips empty rows, and detects extra grade columns', () => {
-    const parsed = fromMatrix(
+  it('builds Glide text cells with padded grades and optional readOnly flag', () => {
+    expect(getStudentGridCell(students, [2, 0], 2, { readOnly: true })).toEqual({
+      kind: GridCellKind.Text,
+      allowOverlay: false,
+      readonly: true,
+      displayData: 'a.smith@example.edu',
+      data: 'a.smith@example.edu',
+    });
+
+    expect(getStudentGridCell(students, [4, 1], 2)).toEqual({
+      kind: GridCellKind.Text,
+      allowOverlay: true,
+      readonly: false,
+      displayData: '',
+      data: '',
+    });
+  });
+
+  it('applies cell edits, skips empty rows, and expands grade count when needed', () => {
+    const edited = applyStudentCellEdits(
+      students,
       [
-        [
-          { value: 'Alice' },
-          { value: 'Smith' },
-          { value: 'a.smith@example.edu' },
-          { value: '2' },
-          { value: '1.75' },
-          { value: '1.5' },
-        ],
-        [{ value: '' }, { value: '' }, { value: '' }],
+        {
+          location: [5, 0],
+          value: {
+            kind: GridCellKind.Text,
+            allowOverlay: true,
+            displayData: '1.75',
+            data: '1.75',
+          },
+        },
+        {
+          location: [0, 1],
+          value: {
+            kind: GridCellKind.Text,
+            allowOverlay: true,
+            displayData: '',
+            data: '',
+          },
+        },
       ],
       2
     );
 
-    expect(parsed.detectedGradeCount).toBe(3);
-    expect(parsed.students).toEqual([
+    expect(edited.detectedGradeCount).toBe(3);
+    expect(edited.students).toEqual([
+      {
+        name: 'Alice',
+        surname: 'Smith',
+        email: 'a.smith@example.edu',
+        grades: ['2', '1.5', '1.75'],
+      },
+      {
+        name: '',
+        surname: 'Jones',
+        email: 'b.jones@example.edu',
+        grades: ['1', '', ''],
+      },
+    ]);
+  });
+
+  it('handles multi-row TSV paste with automatic row expansion and grade column detection', () => {
+    const pasted = applyStudentPaste(
+      [],
+      [0, 0],
+      [
+        ['Alice', 'Smith', 'a.smith@example.edu', '2', '1.75', '1.5'],
+        ['Bob', 'Jones', 'b.jones@example.edu', '1', '2', ''],
+        [''],
+      ],
+      1
+    );
+
+    expect(pasted.detectedGradeCount).toBe(3);
+    expect(pasted.students).toEqual([
       {
         name: 'Alice',
         surname: 'Smith',
         email: 'a.smith@example.edu',
         grades: ['2', '1.75', '1.5'],
+      },
+      {
+        name: 'Bob',
+        surname: 'Jones',
+        email: 'b.jones@example.edu',
+        grades: ['1', '2', ''],
       },
     ]);
   });
